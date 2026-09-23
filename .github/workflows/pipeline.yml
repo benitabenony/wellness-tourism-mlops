@@ -1,0 +1,72 @@
+name: MLOps Pipeline - Wellness Tourism
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  data_registration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r tourism_project/requirements.txt
+      - run: python tourism_project/model_building/data_register.py
+
+  data_preparation:
+    needs: data_registration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r tourism_project/requirements.txt
+      - run: python tourism_project/model_building/prep.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: data-splits
+          path: |
+            Xtrain.csv
+            Xtest.csv
+            ytrain.csv
+            ytest.csv
+
+  model_building:
+    needs: data_preparation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r tourism_project/requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: data-splits
+      - run: python tourism_project/model_building/train.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: best-model
+          path: tourism_project/deployment/
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore(ci): update trained model [skip ci]"
+          file_pattern: "tourism_project/deployment/*"
+          branch: main
+
+  output_report:
+    needs: model_building
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - run: find . -not -path './.git*' | sort
+      - run: cat tourism_project/deployment/metrics.json
