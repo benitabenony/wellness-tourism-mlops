@@ -8,7 +8,7 @@ Predicts, before a salesperson contacts a customer, whether that customer is lik
 purchase "Visit with Us"'s new **Wellness Tourism Package** — a fully automated GitHub
 Actions MLOps pipeline with a Streamlit deployment.
 
-🔗 **Live app:** `<paste your Streamlit app URL here>`
+🔗 **Live app:** `https://wellness-tourism-mlops-5dcw6mnappvyvqmhgz56vcp.streamlit.app/`
 
 ## Everything is documented in one notebook
 
