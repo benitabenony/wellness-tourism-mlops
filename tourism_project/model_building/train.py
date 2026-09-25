@@ -14,15 +14,19 @@ RANDOM_STATE = 42
 mlflow.set_tracking_uri("sqlite:///mlflow.db")
 mlflow.set_experiment("wellness-tourism-prodtaken")
 
+
 def build_preprocessor(X):
-    cat_cols = X.select_dtypes(include=["object"]).columns.tolist()
-    num_cols = X.select_dtypes(exclude=["object"]).columns.tolist()
+    """Scale numeric columns, one-hot encode categoricals (unknowns ignored)."""
+    cat_cols = X.select_dtypes(exclude="number").columns.tolist()
+    num_cols = X.select_dtypes(include="number").columns.tolist()
     return ColumnTransformer([
         ("num", StandardScaler(), num_cols),
         ("cat", OneHotEncoder(handle_unknown="ignore"), cat_cols),
     ])
 
+
 def get_model_grid():
+    """The 6 algorithms required by the rubric, each with a tuning grid."""
     return {
         "DecisionTree": (DecisionTreeClassifier(random_state=RANDOM_STATE),
             {"model__max_depth": [4, 6, 8, None], "model__min_samples_split": [2, 5, 10]}),
@@ -39,7 +43,9 @@ def get_model_grid():
              "model__learning_rate": [0.05, 0.1]}),
     }
 
+
 def evaluate(y_true, y_pred, y_proba):
+    """F1 and ROC-AUC matter most given the ~19%/81% class imbalance."""
     return {
         "accuracy": round(accuracy_score(y_true, y_pred), 4),
         "precision": round(precision_score(y_true, y_pred), 4),
@@ -48,7 +54,10 @@ def evaluate(y_true, y_pred, y_proba):
         "roc_auc": round(roc_auc_score(y_true, y_proba), 4),
     }
 
+
 def main():
+    # Downloaded by the CI job from the "data-splits" workflow artifact
+    # (or produced locally by prep.py) before this script runs
     Xtrain = pd.read_csv("Xtrain.csv"); Xtest = pd.read_csv("Xtest.csv")
     ytrain = pd.read_csv("ytrain.csv").squeeze()
     ytest = pd.read_csv("ytest.csv").squeeze()
@@ -63,6 +72,9 @@ def main():
             search = GridSearchCV(pipe, grid, cv=3, scoring="f1", n_jobs=-1)
             search.fit(Xtrain, ytrain)
 
+            # Log EVERY parameter combination the grid search tried as its own
+            # nested run — not just the winner — so the full tuning history is
+            # queryable, not just the final choice
             cv_results = search.cv_results_
             for combo_idx, combo_params in enumerate(cv_results["params"]):
                 with mlflow.start_run(run_name=f"{name}_combo_{combo_idx}", nested=True):
@@ -71,10 +83,15 @@ def main():
                     mlflow.log_metric("std_cv_f1", cv_results["std_test_score"][combo_idx])
                     mlflow.log_metric("rank_cv_f1", int(cv_results["rank_test_score"][combo_idx]))
 
+            # Evaluate the winning combination on the held-out test set
+            # (not the CV training folds) to guard against overfitting
             bp = search.best_estimator_
             pred = bp.predict(Xtest)
             proba = bp.predict_proba(Xtest)[:, 1]
             metrics = evaluate(ytest, pred, proba)
+
+            # Log the winning combo's params + full test metrics on the parent
+            # run as a summary for this model family
             mlflow.log_params(search.best_params_)
             mlflow.log_metrics(metrics)
             mlflow.set_tag("model_family", name)
@@ -82,16 +99,22 @@ def main():
             print(f"[{name}] tried {len(cv_results['params'])} combinations -> "
                   f"best {search.best_params_} -> {metrics}")
             all_results.append({"model": name, "best_params": search.best_params_, **metrics})
+
+            # Track the single best model across all 6 families by test F1
             if metrics["f1"] > best["f1"]:
                 best = {"name": name, "f1": metrics["f1"], "pipeline": bp,
                         "metrics": metrics, "params": search.best_params_}
 
     print(f"BEST MODEL: {best['name']} (F1={best['f1']})")
+
+    # Save the winning pipeline (preprocessing + model bundled together) so
+    # the CI job can commit it straight to the repo for the Streamlit app
     joblib.dump(best["pipeline"], "tourism_project/deployment/model.joblib")
     with open("tourism_project/deployment/metrics.json", "w") as f:
         json.dump({"best_model": best["name"], "best_params": best["params"],
                     "metrics": best["metrics"], "all_results": all_results},
                    f, indent=2, default=str)
+
 
 if __name__ == "__main__":
     main()
