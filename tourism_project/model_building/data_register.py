@@ -49,26 +49,26 @@ def main():
         actual_kind = "numeric" if is_numeric else "categorical"
         if actual_kind != expected_kind:
             type_mismatches.append(
-                f"{col}: expected {expected_kind}, found {actual_kind} ({df[col].dtype})"
+                "{}: expected {}, found {} ({})".format(col, expected_kind, actual_kind, df[col].dtype)
             )
     if type_mismatches:
         print("VALIDATION FAILED - column type mismatches:")
         for m in type_mismatches:
-            print(f"  - {m}")
+            print("  - " + m)
         sys.exit(1)
 
-    # Both gates passed — print a summary so a human (or the CI log) can
+    # Both gates passed - print a summary so a human (or the CI log) can
     # sanity-check the dataset before the pipeline proceeds
-    print("VALIDATION PASSED - all expected columns are present with the correct type.
-")
+    print("VALIDATION PASSED - all expected columns are present with the correct type.")
+    print("")
     print("Shape:", df.shape)
     print(df.dtypes)
-    print("
-Missing values:
-", df.isnull().sum())
-    print(f"
-Target ({TARGET_COLUMN}) distribution:
-", df[TARGET_COLUMN].value_counts())
+    print("")
+    print("Missing values:")
+    print(df.isnull().sum())
+    print("")
+    print("Target ({}) distribution:".format(TARGET_COLUMN))
+    print(df[TARGET_COLUMN].value_counts())
 
 
 if __name__ == "__main__":
